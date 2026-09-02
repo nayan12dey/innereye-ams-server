@@ -17,8 +17,12 @@ const client = new MongoClient(uri, {
     },
 });
 
+const attendanceRoutes = require('./routes/attendance.routes');
+
 // Middleware
 app.use(express.json());
+
+app.use('/api/attendance', attendanceRoutes);
 
 // MongoDB connection
 async function connectDB() {
