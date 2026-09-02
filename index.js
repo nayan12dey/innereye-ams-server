@@ -2,40 +2,55 @@ const express = require('express');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-dotenv.config()
-
-const uri = process.env.MONGODB_URI;
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 
+const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
     serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
-    }
+    },
 });
 
-async function run() {
+// Middleware
+app.use(express.json());
+
+// MongoDB connection
+async function connectDB() {
     try {
-        // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
-        // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    } finally {
-        // Ensures that the client will close when you finish/error
-        await client.close();
+
+        const db = client.db('innereye');
+
+        await db.command({ ping: 1 });
+
+        console.log('MongoDB connected successfully!');
+
+        return db;
+    } catch (error) {
+        console.error('MongoDB connection failed:', error);
+        process.exit(1);
     }
 }
-run().catch(console.dir);
 
-
+// Test route
 app.get('/', (req, res) => {
     res.send('InnerEye AMS Server running....');
 });
 
+// Start server
+async function startServer() {
+    await connectDB();
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+
+startServer();
+
