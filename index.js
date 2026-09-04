@@ -1,11 +1,13 @@
 const express = require('express');
 const dotenv = require('dotenv');
+const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 
 const uri = process.env.MONGODB_URI;
 
@@ -18,11 +20,18 @@ const client = new MongoClient(uri, {
 });
 
 const attendanceRoutes = require('./routes/attendance.routes');
+const leaveRoutes = require('./routes/leave.routes');
 
 // Middleware
+app.use(cors({
+    origin: 'http://localhost:3000',
+}));
+
+
 app.use(express.json());
 
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/leaves', leaveRoutes);
 
 // MongoDB connection
 async function connectDB() {
