@@ -112,6 +112,42 @@ const applyLeave = async (req, res) => {
     }
 };
 
+// Get Employee Leave Requests
+const getEmployeeLeaves = async (req, res) => {
+    try {
+        const db = await getDatabase();
+
+        const { employeeId } = req.params;
+
+        if (!employeeId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Employee ID is required',
+            });
+        }
+
+        const leaves = await db
+            .collection('leaves')
+            .find({ employeeId })
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.status(200).json({
+            success: true,
+            leaves,
+        });
+
+    } catch (error) {
+        console.error('Get employee leaves error:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch leave requests',
+        });
+    }
+};
+
 module.exports = {
     applyLeave,
+    getEmployeeLeaves,
 };
