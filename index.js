@@ -24,7 +24,7 @@ const leaveRoutes = require('./routes/leave.routes');
 
 // Middleware
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: process.env.CLIENT_URL,
 }));
 
 
@@ -36,11 +36,11 @@ app.use('/api/leaves', leaveRoutes);
 // MongoDB connection
 async function connectDB() {
     try {
-        await client.connect();
+        // await client.connect();
 
         const db = client.db('innereye');
 
-        await db.command({ ping: 1 });
+        // await db.command({ ping: 1 });
 
         console.log('MongoDB connected successfully!');
 
