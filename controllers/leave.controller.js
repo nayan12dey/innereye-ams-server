@@ -1,4 +1,5 @@
-const { MongoClient } = require('mongodb');
+
+const { MongoClient, ObjectId } = require('mongodb');
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
@@ -72,7 +73,7 @@ const applyLeave = async (req, res) => {
         if (totalDays > remainingLeave) {
             return res.status(400).json({
                 success: false,
-                message: `Insufficient leave balance. Remaining leave: ${remainingLeave} days`,
+                message: `Insufficient leave balance.Remaining leave: ${remainingLeave} days`,
             });
         }
 
@@ -112,6 +113,7 @@ const applyLeave = async (req, res) => {
     }
 };
 
+
 // Get Employee Leave Requests
 const getEmployeeLeaves = async (req, res) => {
     try {
@@ -147,7 +149,228 @@ const getEmployeeLeaves = async (req, res) => {
     }
 };
 
+
+// Get All Leave Requests for HR
+const getAllLeaves = async (req, res) => {
+    try {
+        const db = await getDatabase();
+
+        const leaves = await db
+            .collection('leaves')
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        const leavesWithEmployee = await Promise.all(
+            leaves.map(async (leave) => {
+                const employee = await db.collection('user').findOne({
+                    empId: leave.employeeId,
+                });
+
+                return {
+                    ...leave,
+                    name: employee?.name || employee?.fullName || 'Unknown Employee',
+                };
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            leaves: leavesWithEmployee,
+        });
+
+    } catch (error) {
+        console.error('Get all leaves error:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch leave requests',
+        });
+    }
+};
+
+
+// Approve Leave + Deduct Leave Balance
+const approveLeave = async (req, res) => {
+    try {
+        const db = await getDatabase();
+
+        const { leaveId } = req.params;
+
+        if (!leaveId || !ObjectId.isValid(leaveId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid leave ID',
+            });
+        }
+
+        // Find leave request
+        const leave = await db.collection('leaves').findOne({
+            _id: new ObjectId(leaveId),
+        });
+
+        if (!leave) {
+            return res.status(404).json({
+                success: false,
+                message: 'Leave request not found',
+            });
+        }
+
+        // Prevent duplicate deduction
+        if (leave.status === 'Approved') {
+            return res.status(400).json({
+                success: false,
+                message: 'Leave is already approved',
+            });
+        }
+
+        if (leave.status === 'Rejected') {
+            return res.status(400).json({
+                success: false,
+                message: 'Rejected leave cannot be approved',
+            });
+        }
+
+        // Find employee
+        const employee = await db.collection('user').findOne({
+            empId: leave.employeeId,
+        });
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: 'Employee not found',
+            });
+        }
+
+        const leaveQuota = employee.annualLeaveQuota || 18;
+        const leaveUsed = employee.annualLeaveUsed || 0;
+        const totalDays = leave.totalDays;
+
+        const remainingLeave = leaveQuota - leaveUsed;
+
+        // Double-check leave balance before deduction
+        if (totalDays > remainingLeave) {
+            return res.status(400).json({
+                success: false,
+                message: `Insufficient leave balance.Remaining leave: ${remainingLeave} days`,
+            });
+        }
+
+        // Update employee leave balance
+        await db.collection('user').updateOne(
+            { empId: leave.employeeId },
+            {
+                $set: {
+                    annualLeaveUsed: leaveUsed + totalDays,
+                },
+            }
+        );
+
+        // Update leave request status
+        await db.collection('leaves').updateOne(
+            { _id: new ObjectId(leaveId) },
+            {
+                $set: {
+                    status: 'Approved',
+                    updatedAt: new Date(),
+                },
+            }
+        );
+
+        const newRemainingLeave = leaveQuota - (leaveUsed + totalDays);
+
+        res.status(200).json({
+            success: true,
+            message: `Leave approved and ${totalDays} day(s) deducted successfully`,
+            leave: {
+                ...leave,
+                status: 'Approved',
+            },
+            leaveBalance: {
+                quota: leaveQuota,
+                used: leaveUsed + totalDays,
+                remaining: newRemainingLeave,
+            },
+        });
+
+    } catch (error) {
+        console.error('Approve leave error:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to approve leave',
+        });
+    }
+};
+
+
+// Reject Leave
+const rejectLeave = async (req, res) => {
+    try {
+        const db = await getDatabase();
+
+        const { leaveId } = req.params;
+
+        if (!leaveId || !ObjectId.isValid(leaveId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid leave ID',
+            });
+        }
+
+        const leave = await db.collection('leaves').findOne({
+            _id: new ObjectId(leaveId),
+        });
+
+        if (!leave) {
+            return res.status(404).json({
+                success: false,
+                message: 'Leave request not found',
+            });
+        }
+
+        // Prevent changing an already processed request
+        if (leave.status !== 'Pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Leave is already ${leave.status} `,
+            });
+        }
+
+        await db.collection('leaves').updateOne(
+            { _id: new ObjectId(leaveId) },
+            {
+                $set: {
+                    status: 'Rejected',
+                    updatedAt: new Date(),
+                },
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Leave rejected successfully',
+        });
+
+    } catch (error) {
+        console.error('Reject leave error:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reject leave',
+        });
+    }
+};
+
+
 module.exports = {
     applyLeave,
     getEmployeeLeaves,
+    getAllLeaves,
+    approveLeave,
+    rejectLeave,
 };
+
+
+

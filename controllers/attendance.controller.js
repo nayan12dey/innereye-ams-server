@@ -175,10 +175,51 @@ const getTodayAttendance = async (req, res) => {
 };
 
 
+// Get All Attendance Records for HR
+const getAllAttendance = async (req, res) => {
+    try {
+        const db = await getDatabase();
+
+        const attendanceRecords = await db
+            .collection('attendance')
+            .find({})
+            .sort({ date: -1, createdAt: -1 })
+            .toArray();
+
+        const attendanceWithEmployee = await Promise.all(
+            attendanceRecords.map(async (attendance) => {
+                const employee = await db.collection('user').findOne({
+                    empId: attendance.employeeId,
+                });
+
+                return {
+                    ...attendance,
+                    name: employee?.name || employee?.fullName || 'Unknown Employee',
+                };
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            attendance: attendanceWithEmployee,
+        });
+
+    } catch (error) {
+        console.error('Get all attendance error:', error);
+
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch attendance records',
+        });
+    }
+};
+
+
 module.exports = {
     checkIn,
     checkOut,
     getTodayAttendance,
+    getAllAttendance,
 };
 
 
